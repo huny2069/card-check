@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="ko">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
@@ -8,6 +9,7 @@
     <!-- Tesseract.js CDN -->
     <script src='https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js'></script>
 </head>
+
 <body>
     <div class="container">
         <header>
@@ -17,7 +19,7 @@
         <main>
             <div class="camera-container">
                 <video id="video" autoplay playsinline></video>
-                <canvas id="canvas" style="display:none;"></canvas>
+                <canvas id="canvas"></canvas>
                 <div class="overlay">
                     <div class="scan-area"></div>
                 </div>
@@ -39,11 +41,12 @@
                 </div>
                 <button id="reset-btn" class="btn secondary">다시 스캔</button>
             </div>
-            
+
             <div id="debug-log" style="margin-top: 20px; font-size: 10px; color: #666; display: none;"></div>
         </main>
     </div>
 
     <script type="module" src="app.js"></script>
 </body>
+
 </html>

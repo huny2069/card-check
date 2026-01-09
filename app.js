@@ -18,7 +18,7 @@ let isProcessing = false;
 // Load Driver Data (CSV)
 async function loadDriverData() {
     try {
-        const response = await fetch('data/drivers.csv');
+        const response = await fetch('drivers.csv');
         const text = await response.text();
         driverData = parseCSV(text);
         console.log(`Loaded ${driverData.length} rules from CSV.`);
@@ -64,7 +64,9 @@ async function startCamera() {
     try {
         const stream = await navigator.mediaDevices.getUserMedia({
             video: {
-                facingMode: 'environment' // Rear camera preference
+                facingMode: 'environment', // Rear camera preferences
+                width: { ideal: 4096 },    // Request highest possible resolution
+                height: { ideal: 2160 }
             }
         });
         video.srcObject = stream;
@@ -126,8 +128,8 @@ async function processFrame() {
 
     try {
         // 2. Perform OCR
-        // Using Tesseract.js worker
-        const worker = await Tesseract.createWorker('kor'); // Load Korean language
+        // Using Tesseract.js worker with both Korean and English models
+        const worker = await Tesseract.createWorker(['kor', 'eng']);
         const ret = await worker.recognize(imageA);
         const text = ret.data.text;
         await worker.terminate();
@@ -135,6 +137,10 @@ async function processFrame() {
         const cleanedText = text.replace(/\s+/g, ' ').trim();
         console.log('Recognized Text:', cleanedText);
         recognizedTextEl.textContent = cleanedText || '텍스트 인식 실패';
+
+        // Debug: Show the processed image to the user for a moment
+        canvas.style.display = 'block';
+        setTimeout(() => { canvas.style.display = 'none'; }, 2000);
 
         // 3. Match Driver
         const match = findDriver(cleanedText);
