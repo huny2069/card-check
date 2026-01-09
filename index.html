@@ -18,15 +18,22 @@
 
         <main>
             <div class="camera-container">
-                <video id="video" autoplay playsinline></video>
-                <canvas id="canvas"></canvas>
-                <div class="overlay">
-                    <div class="scan-area"></div>
+                <!-- Image Preview Area -->
+                <img id="preview-img" src="" alt="촬영된 사진"
+                    style="display:none; width: 100%; height: 100%; object-fit: contain;">
+                <div id="placeholder-text"
+                    style="color: white; display: flex; align-items: center; justify-content: center; height: 100%;">
+                    사진을 촬영해주세요
                 </div>
+
+                <!-- Hidden Canvas for processing -->
+                <canvas id="canvas"></canvas>
             </div>
 
             <div class="controls">
-                <button id="scan-btn" class="btn primary">📷 주소 스캔하기</button>
+                <!-- Native Camera Input -->
+                <input type="file" id="camera-input" accept="image/*" capture="environment" style="display: none;">
+                <button id="scan-btn" class="btn primary">📷 사진 촬영하기</button>
             </div>
 
             <div id="result-container" class="result-card hidden">

@@ -1,19 +1,19 @@
 // app.js
 
 // Elements
-const video = document.getElementById('video');
-const canvas = document.getElementById('canvas');
+const cameraInput = document.getElementById('camera-input');
 const scanBtn = document.getElementById('scan-btn');
+const previewImg = document.getElementById('preview-img');
+const placeholderText = document.getElementById('placeholder-text');
+const canvas = document.getElementById('canvas');
 const resultContainer = document.getElementById('result-container');
 const recognizedTextEl = document.getElementById('recognized-text');
 const driverNameEl = document.getElementById('driver-name');
 const statusEl = document.getElementById('status');
 const resetBtn = document.getElementById('reset-btn');
-const debugLog = document.getElementById('debug-log');
 
 // State
 let driverData = [];
-let isProcessing = false;
 
 // Load Driver Data (CSV)
 async function loadDriverData() {
@@ -28,109 +28,60 @@ async function loadDriverData() {
     }
 }
 
-// Simple CSV Parser: "Keyword,DriverName"
+// Simple CSV Parser
 function parseCSV(csvText) {
     const lines = csvText.split(/\r?\n/);
     const data = [];
-
-    // Skip header if exists (checking if first line contains '키워드')
     let startLine = 0;
-    if (lines[0] && lines[0].includes('키워드')) {
-        startLine = 1;
-    }
+    if (lines[0] && lines[0].includes('키워드')) startLine = 1;
 
     for (let i = startLine; i < lines.length; i++) {
         const line = lines[i].trim();
-        if (!line) continue; // Skip empty lines
-
+        if (!line) continue;
         const parts = line.split(',');
         if (parts.length >= 2) {
-            // Assumes format: Keyword, DriverName
-            const keyword = parts[0].trim();
-            const driver = parts[1].trim();
-
-            // Push individual rule
             data.push({
-                keyword: keyword,
-                driver: driver
+                keyword: parts[0].trim(),
+                driver: parts[1].trim()
             });
         }
     }
     return data;
 }
 
-// Camera Setup
-async function startCamera() {
-    try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-            video: {
-                facingMode: 'environment', // Rear camera preferences
-                width: { ideal: 4096 },    // Request highest possible resolution
-                height: { ideal: 2160 }
-            }
-        });
-        video.srcObject = stream;
-    } catch (error) {
-        console.error('Camera access denied:', error);
-        alert('카메라 접근 권한이 필요합니다. 브라우저 설정에서 권한을 허용해주세요.');
-    }
-}
+// 1. User clicks "Take Photo" -> Triggers hidden file input
+scanBtn.addEventListener('click', () => {
+    cameraInput.click();
+});
 
+// 2. User selects/takes photo -> Process it
+cameraInput.addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
 
-async function processFrame() {
-    if (isProcessing) return;
-    isProcessing = true;
-
+    // Show loading state
     scanBtn.disabled = true;
     scanBtn.textContent = '분석중...';
-    document.body.classList.add('scanning');
-    statusEl.textContent = '이미지 분석 및 글자 인식 중...';
+    statusEl.textContent = '사진을 분석하고 있습니다...';
+    resultContainer.classList.remove('hidden');
 
-    // 1. Capture Image from Video (ROI Crop)
-    // Use 'willReadFrequently: true' for better performance on frequent readbacks
-    const context = canvas.getContext('2d', { willReadFrequently: true });
+    // Display Preview
+    const imageUrl = URL.createObjectURL(file);
+    previewImg.src = imageUrl;
+    previewImg.style.display = 'block';
+    placeholderText.style.display = 'none';
 
-    // We want to crop the center area where the box is.
-    // The box is roughly 80% width and 30% height of the video container.
-    const cropWidth = video.videoWidth * 0.8;
-    const cropHeight = video.videoHeight * 0.3;
-    const startX = (video.videoWidth - cropWidth) / 2;
-    const startY = (video.videoHeight - cropHeight) / 2;
+    // Process Image
+    await processImage(imageUrl);
+});
 
-    canvas.width = cropWidth;
-    canvas.height = cropHeight;
-
-    // Draw only the cropped area to the canvas
-    context.drawImage(video, startX, startY, cropWidth, cropHeight, 0, 0, cropWidth, cropHeight);
-
-    // Preprocessing: Binarization (Thresholding)
-    // This makes text sharp black and background white
-    const imageData = context.getImageData(0, 0, cropWidth, cropHeight);
-    const data = imageData.data;
-
-    for (let i = 0; i < data.length; i += 4) {
-        // Grayscale calculation
-        const avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
-
-        // Threshold: if darker than 135, make it black (0), else white (255)
-        // Adjusted threshold for card text
-        const threshold = 135;
-        const color = avg < threshold ? 0 : 255;
-
-        data[i] = color;     // R
-        data[i + 1] = color; // G
-        data[i + 2] = color; // B
-    }
-    context.putImageData(imageData, 0, 0);
-
-    // Get Data URL
-    const imageA = canvas.toDataURL('image/png');
-
+async function processImage(imageUrl) {
     try {
-        // 2. Perform OCR
-        // Using Tesseract.js worker with both Korean and English models
+        // Tesseract Worker
         const worker = await Tesseract.createWorker(['kor', 'eng']);
-        const ret = await worker.recognize(imageA);
+
+        // Recognize directly from URL (Tesseract handles loading)
+        const ret = await worker.recognize(imageUrl);
         const text = ret.data.text;
         await worker.terminate();
 
@@ -138,63 +89,62 @@ async function processFrame() {
         console.log('Recognized Text:', cleanedText);
         recognizedTextEl.textContent = cleanedText || '텍스트 인식 실패';
 
-        // Debug: Show the processed image to the user for a moment
-        canvas.style.display = 'block';
-        setTimeout(() => { canvas.style.display = 'none'; }, 2000);
+        // Anchor Logic: Find text after "해운대" or "부산"
+        const focusText = extractAddressAfterAnchor(cleanedText);
 
-        // 3. Match Driver
-        const match = findDriver(cleanedText);
+        if (focusText.length < cleanedText.length) {
+            statusEl.textContent = `위치 찾음: ...${focusText.substring(0, 15)}...`;
+        } else {
+            statusEl.textContent = '전체 텍스트 검색 중...';
+        }
+
+        // Match Logic
+        const match = findDriver(focusText);
 
         if (match) {
             driverNameEl.textContent = match.driver;
             driverNameEl.style.color = 'var(--primary-color)';
-            statusEl.textContent = '분류 완료!';
+            statusEl.textContent = `'${match.keyword}' 매칭 성공!`;
             statusEl.style.backgroundColor = '#d4edda';
             statusEl.style.color = '#155724';
         } else {
-            driverNameEl.textContent = '담당자 없음 / 인식 불가';
+            driverNameEl.textContent = '담당자 없음';
             driverNameEl.style.color = '#dc3545';
-            statusEl.textContent = '매칭 실패';
+            statusEl.textContent = '주소 인식 실패 (데이터 확인 필요)';
             statusEl.style.backgroundColor = '#f8d7da';
             statusEl.style.color = '#721c24';
         }
 
-        // Show Results
-        resultContainer.classList.remove('hidden');
-        scanBtn.classList.add('hidden');
-
     } catch (error) {
-        console.error('OCR Error:', error);
-        alert('분석 중 오류가 발생했습니다.');
-        statusEl.textContent = '오류 발생';
+        console.error(error);
+        alert('이미지 분석 중 오류가 발생했습니다.');
     } finally {
-        isProcessing = false;
         scanBtn.disabled = false;
-        scanBtn.textContent = '📷 주소 스캔하기';
-        document.body.classList.remove('scanning');
+        scanBtn.textContent = '📷 다시 촬영하기';
     }
 }
 
-// Matching Algorithm
-// Matching Algorithm
-// Matching Algorithm
+// Extract text after "해운대" or "부산"
+function extractAddressAfterAnchor(text) {
+    const haeundaeIndex = text.indexOf('해운대');
+    if (haeundaeIndex !== -1) return text.substring(haeundaeIndex + 3).trim();
+
+    const busanIndex = text.indexOf('부산');
+    if (busanIndex !== -1) return text.substring(busanIndex + 2).trim();
+
+    return text;
+}
+
+// Matching Algorithm (Normalized)
 function findDriver(text) {
     if (!text) return null;
-
-    // 1. Prepare normalized text (remove spaces and special chars)
-    // This helps match "반여로 83" even if OCR sees "반 여 로83" or "반여로-83"
     const normalizedText = text.replace(/[\s\.\-\,]+/g, '');
 
-    // Check against all CSV rules
     for (const rule of driverData) {
-        // 2. Normalize keyword too
         const normalizedKeyword = rule.keyword.replace(/[\s\.\-\,]+/g, '');
-
-        // Debug: strict check vs fuzzy check
-        // Check 1: Original include (keeping spaces)
+        // Strict
         if (text.includes(rule.keyword)) return rule;
-
-        // Check 2: Normalized include (ignoring spaces/punctuation)
+        // Fuzzy
         if (normalizedText.includes(normalizedKeyword)) {
             console.log(`Matched via normalization: ${rule.keyword}`);
             return rule;
@@ -203,12 +153,13 @@ function findDriver(text) {
     return null;
 }
 
-// Event Listeners
-scanBtn.addEventListener('click', processFrame);
-
 resetBtn.addEventListener('click', () => {
+    cameraInput.value = '';
+    previewImg.src = '';
+    previewImg.style.display = 'none';
+    placeholderText.style.display = 'flex';
     resultContainer.classList.add('hidden');
-    scanBtn.classList.remove('hidden');
+
     recognizedTextEl.textContent = '-';
     driverNameEl.textContent = '-';
     statusEl.textContent = '대기중...';
@@ -216,8 +167,5 @@ resetBtn.addEventListener('click', () => {
     statusEl.style.color = '#333';
 });
 
-// Initialization
-window.addEventListener('load', () => {
-    loadDriverData();
-    startCamera();
-});
+// Init
+window.addEventListener('load', loadDriverData);
