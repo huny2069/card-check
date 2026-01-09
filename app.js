@@ -177,12 +177,26 @@ async function processFrame() {
 
 // Matching Algorithm
 // Matching Algorithm
+// Matching Algorithm
 function findDriver(text) {
     if (!text) return null;
 
+    // 1. Prepare normalized text (remove spaces and special chars)
+    // This helps match "반여로 83" even if OCR sees "반 여 로83" or "반여로-83"
+    const normalizedText = text.replace(/[\s\.\-\,]+/g, '');
+
     // Check against all CSV rules
     for (const rule of driverData) {
-        if (text.includes(rule.keyword)) {
+        // 2. Normalize keyword too
+        const normalizedKeyword = rule.keyword.replace(/[\s\.\-\,]+/g, '');
+
+        // Debug: strict check vs fuzzy check
+        // Check 1: Original include (keeping spaces)
+        if (text.includes(rule.keyword)) return rule;
+
+        // Check 2: Normalized include (ignoring spaces/punctuation)
+        if (normalizedText.includes(normalizedKeyword)) {
+            console.log(`Matched via normalization: ${rule.keyword}`);
             return rule;
         }
     }
