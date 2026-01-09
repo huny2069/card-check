@@ -74,27 +74,7 @@ async function startCamera() {
     }
 }
 
-// Image Preprocessing (Simple Grayscale/Contrast)
-function preprocessImage(ctx, width, height) {
-    const imageData = ctx.getImageData(0, 0, width, height);
-    const data = imageData.data;
 
-    // Convert to grayscale and increase contrast
-    for (let i = 0; i < data.length; i += 4) {
-        const avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
-        const contrast = 1.2; // Increase contrast
-        const factor = (259 * (contrast + 255)) / (255 * (259 - contrast));
-        const color = factor * (avg - 128) + 128;
-
-        data[i] = color;     // Red
-        data[i + 1] = color; // Green
-        data[i + 2] = color; // Blue
-    }
-
-    ctx.putImageData(imageData, 0, 0);
-}
-
-// OCR and Matching Logic
 async function processFrame() {
     if (isProcessing) return;
     isProcessing = true;
@@ -104,18 +84,42 @@ async function processFrame() {
     document.body.classList.add('scanning');
     statusEl.textContent = '이미지 분석 및 글자 인식 중...';
 
-    // 1. Capture Image from Video
-    const context = canvas.getContext('2d');
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    // 1. Capture Image from Video (ROI Crop)
+    // Use 'willReadFrequently: true' for better performance on frequent readbacks
+    const context = canvas.getContext('2d', { willReadFrequently: true });
 
-    // Optional: Crop to scan area (center)
-    // For simplicity, we scan the whole frame or a center portion
-    // Improving accuracy by cropping to the overlay area would be better for v2
+    // We want to crop the center area where the box is.
+    // The box is roughly 80% width and 30% height of the video container.
+    const cropWidth = video.videoWidth * 0.8;
+    const cropHeight = video.videoHeight * 0.3;
+    const startX = (video.videoWidth - cropWidth) / 2;
+    const startY = (video.videoHeight - cropHeight) / 2;
 
-    // Preprocessing
-    preprocessImage(context, canvas.width, canvas.height);
+    canvas.width = cropWidth;
+    canvas.height = cropHeight;
+
+    // Draw only the cropped area to the canvas
+    context.drawImage(video, startX, startY, cropWidth, cropHeight, 0, 0, cropWidth, cropHeight);
+
+    // Preprocessing: Binarization (Thresholding)
+    // This makes text sharp black and background white
+    const imageData = context.getImageData(0, 0, cropWidth, cropHeight);
+    const data = imageData.data;
+
+    for (let i = 0; i < data.length; i += 4) {
+        // Grayscale calculation
+        const avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
+
+        // Threshold: if darker than 135, make it black (0), else white (255)
+        // Adjusted threshold for card text
+        const threshold = 135;
+        const color = avg < threshold ? 0 : 255;
+
+        data[i] = color;     // R
+        data[i + 1] = color; // G
+        data[i + 2] = color; // B
+    }
+    context.putImageData(imageData, 0, 0);
 
     // Get Data URL
     const imageA = canvas.toDataURL('image/png');
